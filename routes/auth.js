@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const { userValidationRules, validate } = require('../utilities/validation');
+const { createUser } = require('../utilities/user');
 
-router.post("/register", async (req, res) => {
-    return res.status(201).json({message: "Registrering fungerar!"});
+router.post("/register", userValidationRules(), validate, async (req, res) => {
+    createUser(res, req.body);
 });
 
 router.post("/login", async (req, res) => {
