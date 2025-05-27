@@ -14,17 +14,68 @@ const userValidationRules = () => [
         .escape()
         .isLength({ min: 2, max: 32 })
         .withMessage("Efternamn måste vara mellan två och 32 tecken."),
-
+    body("email")
+        .trim()
+        .escape()
+        .isEmail()
+        .withMessage("E-Post är felaktig."),
     body("password")
         .isStrongPassword()
-        .withMessage("Lösenordet måste vara starkt (minst åtta tecken, versaler/gemener, siffror, symboler).")
+        .withMessage("Lösenordet måste vara starkt (minst åtta tecken, versaler/gemener, siffror, symboler)."),
+    body("role")
+        .optional({ checkFalsy: true })
+        .trim()
+        .escape()
+        .matches("user")
+        .withMessage("Felaktig roll.")
+];
+
+const editUserValidationRules = () => [
+    body("firstname")
+        .trim()
+        .escape()
+        .isLength({ min: 2, max: 32 })
+        .withMessage("Förnamn måste vara mellan två och 32 tecken."),
+
+    body("lastname")
+        .trim()
+        .escape()
+        .isLength({ min: 2, max: 32 })
+        .withMessage("Efternamn måste vara mellan två och 32 tecken.")
+];
+
+const adminValidationRules = () => [
+    body("firstname")
+        .trim()
+        .escape()
+        .isLength({ min: 2, max: 32 })
+        .withMessage("Förnamn måste vara mellan två och 32 tecken."),
+
+    body("lastname")
+        .trim()
+        .escape()
+        .isLength({ min: 2, max: 32 })
+        .withMessage("Efternamn måste vara mellan två och 32 tecken."),
+    body("email")
+        .trim()
+        .escape()
+        .isEmail()
+        .withMessage("E-Post är felaktig."),
+    body("password")
+        .isStrongPassword()
+        .withMessage("Lösenordet måste vara starkt (minst åtta tecken, versaler/gemener, siffror, symboler)."),
+    body("role")
+        .trim()
+        .escape()
+        .matches("admin")
+        .withMessage("Felaktig roll.")
 ];
 
 const productValidationRules = () => [
     body("name")
         .trim()
         .escape()
-        .isLength({ min: 2, max: 100})
+        .isLength({ min: 2, max: 100 })
         .withMessage("Produktnamn måste vara mellan två och 100 tecken."),
     body("price")
         .trim()
@@ -34,7 +85,7 @@ const productValidationRules = () => [
     body("description")
         .trim()
         .escape()
-        .isLength({max: 300})
+        .isLength({ max: 300 })
         .withMessage("Beskrivningen får inte överstiga 300 tecken."),
     body("onSale")
         .optional({ checkFalsy: true })
@@ -46,7 +97,7 @@ const productValidationRules = () => [
         .optional({ checkFalsy: true })
         .trim()
         .escape()
-        .isLength({ min: 2, max: 3})
+        .isLength({ min: 2, max: 3 })
         .withMessage("Rea måste vara antingen två eller tre tecken.")
 ];
 
@@ -72,14 +123,14 @@ const reviewValidationRules = () => [
 ];
 
 const validate = (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      success: false,
-      errors: errors.array()
-    });
-  }
-  next();
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            success: false,
+            errors: errors.array()
+        });
+    }
+    next();
 };
 
-module.exports = { userValidationRules, productValidationRules, categoryValidationRules, reviewValidationRules, validate };
+module.exports = { userValidationRules, editUserValidationRules, adminValidationRules, productValidationRules, categoryValidationRules, reviewValidationRules, validate };

@@ -3,6 +3,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 
 const authRoutes = require("./routes/auth");
+const usersRoutes = require("./routes/users");
 const productsRoutes = require("./routes/products");
 const reviewsRoutes = require("./routes/reviews");
 
@@ -18,6 +19,7 @@ app.use(express.json());
 
 // Routes:
 app.use("/api/auth", authRoutes);
+app.use("/api/users", usersRoutes);
 app.use("/api/products", productsRoutes);
 app.use("/api/reviews", reviewsRoutes);
 
