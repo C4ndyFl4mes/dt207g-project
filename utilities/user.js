@@ -5,22 +5,84 @@ const Response = require("./response");
 
 /**
  * Hämtar en användare.
- * @param {object} res 
  * @param {string} id - användarid.
  * @returns 
  */
-async function getUser(res, id) {
-    // Hantering:
+async function getUser(id) {
+    const account = await user.findById(id);
+    if (!account) {
+        const err = new Error("Konto finns inte.");
+        err.status = 404;
+        throw err;
+    }
+    return account;
+}
+
+/**
+ * Hämtar en profil.
+ * @param {object} res 
+ * @param {object} initiator - vem som förfrågar.
+ * @param {object} target - den profil som ska hämtas.
+ * @returns 
+ */
+async function getProfile(res, initiator, target) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
     const notFound = new Response(res, false, 404, "Användaren finns inte.");
+    const success = new Response(res, true, 201, "Lyckades hämta profil.");
 
     try {
-        const account = await user.findById(id);
-        if (!account) {
+        // Kontrollerar att vanliga inloggade användare endast kan se sin egen profil oavsett query, men admin och root kan använda query för att se andra användares profiler.
+        if (initiator.role === 'user') {
+            target.id = initiator.id;
+        } else if (!target.id) {
+            target.id = initiator.id;
+        }
+
+        const account = await getUser(target.id);
+
+        
+        success.send({ result: { account } });
+    } catch (error) {
+        if (error.status === 404) {
             return notFound.send();
         }
-        return account;
+
+        if (error.name === "CastError") {
+            return invalidID.send();
+        }
+
+        return server.send();
+    }
+}
+
+/**
+ * Hämtar användare beroende på query.
+ * @param {object} res 
+ * @param {object} param1 - query som filtrerar och paginerar.
+ * @returns 
+ */
+async function getUsers(res, { roles, firstname, lastname, page = 1, limit = 10 }) {
+    const server = new Response(res, false, 500, "Ett serverfel inträffade.");
+    const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
+    const success = new Response(res, true, 201, "Lyckades hämta användare.");
+    try {
+        page = parseInt(page);
+        limit = parseInt(limit);
+
+        const filter = {};
+
+        if (roles) filter.role = { $in: roles.split(',') };
+        if (firstname) filter.firstname = { $regex: firstname, $options: 'i' };
+        if (lastname) filter.lastname = { $regex: lastname, $options: 'i' };
+        
+        const totalItems = await user.countDocuments(filter);
+        const totalPages = Math.ceil(totalItems / limit);
+        const skip = (page - 1) * limit;
+
+        const result = await user.find(filter).skip(skip).limit(limit);
+        const pagination = { totalItems, totalPages, currentPage: page, pageSize: limit };
+        return success.send({ pagination, result });
     } catch (error) {
         if (error.name === "CastError") {
             return invalidID.send();
@@ -210,7 +272,7 @@ async function deleteUser(res, initiator, targetID) {
 
                 return success.send({ account: deletedUser1 });
             case "admin":
-                const target = await getUser(res, targetID);
+                const target = await getUser(targetID);
                 if (target.role === "root") {
                     return notPossible.send();
                 }
@@ -227,7 +289,7 @@ async function deleteUser(res, initiator, targetID) {
 
                 return success.send({ account: deletedUser2 });
             case "root":
-                const target2 = await getUser(res, targetID)
+                const target2 = await getUser(targetID)
                 if (target2.role === "root") {
                     return notPossible.send();
                 }
@@ -243,11 +305,15 @@ async function deleteUser(res, initiator, targetID) {
                 return invalidRole.send();
         }
     } catch (error) {
-        if (error.name = "CastError") {
-            invalidID.send();
+        if (error.status === 404) {
+            return notFound.send();
         }
-        server.send();
+
+        if (error.name = "CastError") {
+            return invalidID.send();
+        }
+        return server.send();
     }
 }
 
-module.exports = { createUser, loginUser, editUser, deleteUser };
+module.exports = { getProfile, getUsers, createUser, loginUser, editUser, deleteUser };

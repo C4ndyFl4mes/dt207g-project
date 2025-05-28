@@ -10,12 +10,12 @@ class Response {
         this.message = message;
     }
 
-    send(userdata = null) {
-        if (userdata) {
+    send(data = null) {
+        if (data) {
             return this.res.status(this.status).json({
                 success: this.success,
                 message: this.message,
-                userdata: userdata
+                data: data
             });
         } else {
             return this.res.status(this.status).json({

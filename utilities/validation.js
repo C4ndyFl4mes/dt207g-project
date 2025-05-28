@@ -108,6 +108,18 @@ const categoryValidationRules = () => [
         .isLength({ max: 50 })
         .withMessage("Kategorinamn får inte överstiga 50 tecken.")
 ];
+const editCategoryValidationRules = () => [
+    body("currentName")
+        .trim()
+        .escape()
+        .isLength({ max: 50 })
+        .withMessage("Kategorinamn får inte överstiga 50 tecken."),
+    body("newName")
+        .trim()
+        .escape()
+        .isLength({ max: 50 })
+        .withMessage("Kategorinamn får inte överstiga 50 tecken.")
+];
 
 const reviewValidationRules = () => [
     body("rating")
@@ -133,4 +145,4 @@ const validate = (req, res, next) => {
     next();
 };
 
-module.exports = { userValidationRules, editUserValidationRules, adminValidationRules, productValidationRules, categoryValidationRules, reviewValidationRules, validate };
+module.exports = { userValidationRules, editUserValidationRules, adminValidationRules, productValidationRules, categoryValidationRules, editCategoryValidationRules, reviewValidationRules, validate };

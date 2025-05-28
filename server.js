@@ -20,7 +20,7 @@ app.use(express.json());
 // Routes:
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
-app.use("/api/products", productsRoutes);
+app.use("/api/menu", productsRoutes);
 app.use("/api/reviews", reviewsRoutes);
 
 app.get("/api", (req, res) => {

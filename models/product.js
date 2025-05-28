@@ -36,6 +36,11 @@ const productSchema = new mongoose.Schema({
         maxlength: 3,
         default: "0%"
     },
+    inCategory: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category',
+        required: true
+    },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
