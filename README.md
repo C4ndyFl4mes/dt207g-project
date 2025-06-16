@@ -104,35 +104,35 @@ Uesers
     <td>POST</td>
     <td>/api/auth/root/register</td>
     <td>firstname, lastname, email, password, role</td>
-    <td>"content-type": "application/xml", "authorization": "Bearer token"</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
     <td>För att registrera en admin, endast root kan göra detta.</td>
   </tr>
   <tr>
     <td>PUT</td>
     <td>/api/users/user/:id</td>
     <td>firstname, lastname, email, password</td>
-    <td>"content-type": "application/xml", "authorization": "Bearer token"</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
     <td>Ändrar för- och efternamn, samt email. Men inte lösenord. Lösenord går tyvärr inte att ändra, dumt av mig.</td>
   </tr>
   <tr>
     <td>DELETE</td>
     <td>/api/users/user/:id</td>
     <td></td>
-    <td>"content-type": "application/xml", "authorization": "Bearer token"</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
     <td>Raderar en användare, endast admin och root kan göra det. Admin kan inte radera sig själv eller någon annan admin.</td>
   </tr>
   <tr>
     <td>GET</td>
     <td>/api/users/profile</td>
     <td>Query: userid</td>
-    <td>"content-type": "application/xml", "authorization": "Bearer token"</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
     <td>Utan ett query visas endast den nuvarande inloggade användaren. Endast admin eller root kan se andra användares profiler. En profil är användarens information och recensioner med statistik.</td>
   </tr>
   <tr>
     <td>GET</td>
     <td>/api/users/check/:id</td>
     <td></td>
-    <td>"content-type": "application/xml", "authorization": "Bearer token"</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
     <td>Kollar om nuvarande användare är inloggad.</td>
   </tr>
 </table>
@@ -165,28 +165,106 @@ Products
     <td>/api/menu/:categoryslug/:productslug</td>
     <td></td>
     <td></td>
-    <td>Hämtar en specifik produkt beroende på kategori- och produktnamn</td>
+    <td>Hämtar en specifik produkt beroende på kategori- och produktnamn. Men också recensioner till den produkten.</td>
   </tr>
   <tr>
     <td>POST</td>
     <td>/api/menu/product</td>
     <td>name, price, description, inCategory</td>
-    <td>"content-type": "application/xml", "authorization": "Bearer token"</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
     <td>Endast admin och root kan skapa produkter.</td>
   </tr>
   <tr>
     <td>PUT</td>
     <td>/api/menu/product/:id</td>
     <td>name, price, description, inCategory</td>
-    <td>"content-type": "application/xml", "authorization": "Bearer token"</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
     <td>Endast admin och root kan ändra produkter.</td>
   </tr>
   <tr>
     <td>DELETE</td>
     <td>/api/menu/product/:id</td>
     <td></td>
-    <td>"content-type": "application/xml", "authorization": "Bearer token"</td>
-    <td>Endast admin och root kan radera produkter.</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
+    <td>Endast admin och root kan radera produkter. Varning, vid radering av en produkt raderas även alla tillhörande recensioner.</td>
+  </tr>
+</table>
+
+Reviews
+<table>
+   <tr>
+    <th>Metod</th>
+    <th>Ändpunkt</th>
+    <th>Body</th>
+    <th>Headers</th>
+    <th>Beskrivning</th>
+  </tr>
+  <tr>
+    <td>GET</td>
+    <td>/api/reviews/check/:id</td>
+    <td></td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
+    <td>Kollar om användaren redan lagt till en recension på produkten (:id)</td>
+  </tr>
+  <tr>
+    <td>POST</td>
+    <td>/api/reviews/review/:id</td>
+    <td>rating, message</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
+    <td>Endast en inloggad användare kan lägga upp recensioner. Id:et är vilken produkt recensionen hamnar på.</td>
+  </tr>
+  <tr>
+    <td>PUT</td>
+    <td>/api/reviews/review/:id</td>
+    <td>rating, message</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
+    <td>Endast en inloggad användare kan ändra sin egen recension. Id:et är vilken recension det handlar om.</td>
+  </tr>
+  <tr>
+    <td>DELETE</td>
+    <td>/api/reviews/review/:id</td>
+    <td></td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
+    <td>Endast admin och root kan radera en annans användare recension. Alla användare kan radera sina egna. Id:et är vilken recension det handlar om.</td>
+  </tr>
+</table>
+
+Categories
+<table>
+   <tr>
+    <th>Metod</th>
+    <th>Ändpunkt</th>
+    <th>Body</th>
+    <th>Headers</th>
+    <th>Beskrivning</th>
+  </tr>
+  <tr>
+    <td>GET</td>
+    <td>/api/menu/categories</td>
+    <td></td>
+    <td></td>
+    <td>Hämtar alla kategorier.</td>
+  </tr>
+  <tr>
+    <td>POST</td>
+    <td>/api/menu/category</td>
+    <td>name</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
+    <td>Lägger till en kategori. Endast admin eller root kan göra det.</td>
+  </tr>
+  <tr>
+    <td>PUT</td>
+    <td>/api/menu/category/:id</td>
+    <td>name</td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
+    <td>Ändrar en kategori. Endast admin eller root kan göra det.</td>
+  </tr>
+  <tr>
+    <td>DELETE</td>
+    <td>/api/menu/category/:id</td>
+    <td></td>
+    <td>"content-type": "application/json", "authorization": "Bearer token"</td>
+    <td>Raderar en kategori. Endast admin eller root kan göra det. Varning, att radera en kategori raderar alla tillhörande produkter och deras recensioner.</td>
   </tr>
 </table>
 
