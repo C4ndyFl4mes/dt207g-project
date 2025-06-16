@@ -2,7 +2,7 @@
 Det här är ett REST API skriven i JavaScript med Express för att hantera konton, autentisering, kafé-menyer, recensioner, administrativa funktioner och skyddade resurser.
 
 ## Länk
-Webbapplikationen som använder API:et: [repo](https://github.com/C4ndyFl4mes/dt207g-frontend/) [URL](...).
+Webbapplikationen som använder API:et: [repo](https://github.com/C4ndyFl4mes/dt207g-frontend/) [URL](https://rymdrosten.netlify.app/start).
 
 ## Databas
 API:et använder en NoSQL-databas, MongoDB, som består av fyra tabeller: Users, Products, Reviews och Categories.
