@@ -1,6 +1,6 @@
 const express = require('express');
 const { authorize } = require('../utilities/token');
-const { editUser, deleteUser, getUsers, getProfile } = require('../utilities/user');
+const { editUser, deleteUser, getUsers, getProfile, isUserLoggedIn } = require('../utilities/user');
 const { editUserValidationRules, validate } = require('../utilities/validation');
 const router = express.Router();
 
@@ -15,18 +15,18 @@ router.get("/profile", authorize(['user', 'admin', 'root']), (req, res) => {
 });
 
 // Ändrar en användare.
-router.put("/:id", authorize(['user', 'admin', 'root']), editUserValidationRules(), validate, (req, res) => {
-    const target = {
-        id: req.params.id,
-        firstname: req.body.firstname,
-        lastname: req.body.lastname
-    };
-    editUser(res, req.user, target);
+router.put("/user/:id", authorize(['user', 'admin', 'root']), editUserValidationRules(), validate, (req, res) => {
+    editUser(res, req.user, req.params.id, req.body);
 });
 
 // Raderar en användare.
-router.delete("/:id", authorize(['user', 'admin', 'root']), (req, res) => {
+router.delete("/user/:id", authorize(['user', 'admin', 'root']), (req, res) => {
     deleteUser(res, req.user, req.params.id);
+});
+
+// Kollar om en användare är inloggad.
+router.get("/check/:id", authorize(['user', 'admin', 'root']), (req, res) => {
+    isUserLoggedIn(res, req.params.id);
 });
 
 module.exports = router;

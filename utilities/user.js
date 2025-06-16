@@ -2,6 +2,45 @@ const user = require("../models/user");
 const bcrypt = require('bcrypt');
 const { generateToken } = require("./token");
 const Response = require("./response");
+const { getReviewsByUser } = require("./review");
+const review = require("../models/review");
+const dayjs = require('dayjs');
+
+
+/**
+ * Kollar om användaren är inloggad.
+ * @param {object} res 
+ * @param {string} userID - användarid.
+ * @returns 
+ */
+async function isUserLoggedIn(res, userID) {
+    const server = new Response(res, false, 500, "Ett serverfel inträffade.");
+    const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
+    const notFound = new Response(res, false, 404, "Användaren finns inte.");
+    const success = new Response(res, true, 200, "Användaren är inloggad och korrekt.");
+
+    try {
+        const cUser = await user.findById(userID);
+
+        if (!cUser) {
+            return notFound.send();
+        }
+        const formatted = {
+            id: cUser._id,
+            firstname: cUser.firstname,
+            lastname: cUser.lastname,
+            registered: dayjs(cUser.createdAt).format("YYYY-MM-DD HH:mm"),
+            role: cUser.role
+        }
+        return success.send({ account: formatted });
+    } catch (error) {
+        if (error.name === "CastError") {
+            return invalidID.send();
+        }
+        console.error(error);
+        return server.send();
+    }
+}
 
 /**
  * Hämtar en användare.
@@ -29,7 +68,7 @@ async function getProfile(res, initiator, target) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
     const notFound = new Response(res, false, 404, "Användaren finns inte.");
-    const success = new Response(res, true, 201, "Lyckades hämta profil.");
+    const success = new Response(res, true, 200, "Lyckades hämta profil.");
 
     try {
         // Kontrollerar att vanliga inloggade användare endast kan se sin egen profil oavsett query, men admin och root kan använda query för att se andra användares profiler.
@@ -41,8 +80,22 @@ async function getProfile(res, initiator, target) {
 
         const account = await getUser(target.id);
 
-        
-        success.send({ result: { account } });
+        const formatted = {
+            id: account._id,
+            firstname: account.firstname,
+            lastname: account.lastname,
+            email: account.email,
+            role: account.role,
+            registered: dayjs(account.createdAt).format("YYYY-MM-DD HH:mm")
+        };
+
+        const reviews_section = await getReviewsByUser(target.id, true, target.page, target.limit);
+
+        // const allReviews = await getReviewsByUser(target.id, false);
+
+
+
+        success.send({ account: formatted, reviews_section });
     } catch (error) {
         if (error.status === 404) {
             return notFound.send();
@@ -51,7 +104,7 @@ async function getProfile(res, initiator, target) {
         if (error.name === "CastError") {
             return invalidID.send();
         }
-
+        console.error(error);
         return server.send();
     }
 }
@@ -62,7 +115,7 @@ async function getProfile(res, initiator, target) {
  * @param {object} param1 - query som filtrerar och paginerar.
  * @returns 
  */
-async function getUsers(res, { roles, firstname, lastname, page = 1, limit = 10 }) {
+async function getUsers(res, { roles, name, page = 1, limit = 10 }) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
     const success = new Response(res, true, 201, "Lyckades hämta användare.");
@@ -70,23 +123,66 @@ async function getUsers(res, { roles, firstname, lastname, page = 1, limit = 10 
         page = parseInt(page);
         limit = parseInt(limit);
 
-        const filter = {};
+        // Följande kod är för att kunna söka name på både för- och efternamn.
+        name = name?.trim().replace(/\s+/, ' ') || "";
 
-        if (roles) filter.role = { $in: roles.split(',') };
-        if (firstname) filter.firstname = { $regex: firstname, $options: 'i' };
-        if (lastname) filter.lastname = { $regex: lastname, $options: 'i' };
-        
-        const totalItems = await user.countDocuments(filter);
-        const totalPages = Math.ceil(totalItems / limit);
+        const pipeline = [];
+
+        if (name) {
+            // Skapar ett fält för både förnamn och efternamn.
+            pipeline.push({
+                $addFields: {
+                    fullname: { $concat: ["$firstname", " ", "$lastname"] }
+                }
+            });
+
+            // Gör en matchning mellan namn och fullname.
+            pipeline.push({
+                $match: {
+                    fullname: { $regex: name, $options: 'i' }
+                }
+            });
+        }
+        if (roles) {
+            // Gör en matchning mellan roller.
+            pipeline.push({
+                $match: {
+                    role: { $in: roles.split(',') }
+                }
+            });
+        }
+
         const skip = (page - 1) * limit;
 
-        const result = await user.find(filter).skip(skip).limit(limit);
+        pipeline.push({ $skip: skip });
+        pipeline.push({ $limit: limit });
+
+        const result = await user.aggregate(pipeline).sort({ createdAt: -1 }); // Sorterad senast först.
+        const formatted = result.map(r => ({
+            id: r._id,
+            firstname: r.firstname,
+            lastname: r.lastname,
+            email: r.email,
+            role: r.role,
+            registered: dayjs(r.createdAt).format("YYYY-MM-DD HH:mm"),
+            edited: dayjs(r.updatedAt).format("YYYY-MM-DD HH:mm")
+        }));
+
+        // Gör massa beräkningar för paginering.
+        const countPipeline = pipeline.filter(stage => !('$skip' in stage || '$limit' in stage));
+        countPipeline.push({ $count: 'total' });
+
+        const countResult = await user.aggregate(countPipeline);
+        const totalItems = countResult[0]?.total || 0;
+        const totalPages = Math.ceil(totalItems / limit);
+
         const pagination = { totalItems, totalPages, currentPage: page, pageSize: limit };
-        return success.send({ pagination, result });
+        return success.send({ pagination, users: formatted });
     } catch (error) {
         if (error.name === "CastError") {
             return invalidID.send();
         }
+        console.error(error);
         return server.send();
     }
 }
@@ -136,7 +232,7 @@ async function loginUser(res, { email, password }) {
     // Hantering:
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const input = new Response(res, false, 400, "E-Post address eller lösenord är felaktig.");
-    const notFound = new Response(res, false, 404, "Användaren finns inte.");
+    const notFound = new Response(res, false, 400, "E-Post address eller lösenord är felaktig.");
     const success = new Response(res, true, 200, "Inloggningen lyckades.");
 
     try {
@@ -147,7 +243,14 @@ async function loginUser(res, { email, password }) {
         const match = await bcrypt.compare(password, account.password);
         if (match) {
             const token = generateToken(account);
-            return success.send({ token, account });
+            const formatted = {
+                id: account._id,
+                firstname: account.firstname,
+                lastname: account.lastname,
+                registered: dayjs(account.createdAt).format("YYYY-MM-DD HH:mm"),
+                role: account.role
+            }
+            return success.send({ token, account: formatted });
         } else {
             return input.send();
         }
@@ -156,6 +259,7 @@ async function loginUser(res, { email, password }) {
     }
 }
 
+
 /**
  * Ändrar en användare, olika roller har olika behörigheter.
  * @param {object} res 
@@ -163,7 +267,7 @@ async function loginUser(res, { email, password }) {
  * @param {object} target - vem ändringen är menad för.
  * @returns 
  */
-async function editUser(res, initiator, target) {
+async function editUser(res, initiator, targetID, body) {
     // Hantering:
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
@@ -172,41 +276,94 @@ async function editUser(res, initiator, target) {
     const unauthEditOtherUser = new Response(res, false, 403, "Du har inte behörigheter till att ändra en annan användare.");
     const unauthEditOtherAdmin = new Response(res, false, 403, "Du har inte behörigheter till att ändra en annan administratör.");
     const unauthEditRoot = new Response(res, false, 403, "Du har inte behörigheter till att ändra root.");
+    const conflict = new Response(res, false, 409, "E-Post addressen är redan registrerad.");
+    // Alltså, detta händer bara om man är inloggad och ska ändra sin användare. Och det är ologiskt att e-post addressen är fel för lösenordet.
+    // Men det kan bara vara jag som har tänkt konstigt.
+    const input = new Response(res, false, 400, "Lösenord är felaktig.");
     const success = new Response(res, true, 200, "Lyckades uppdatera användaren.");
 
     try {
         switch (initiator.role) {
             case "user":
-                if (initiator.id !== target.id) {
+                if (initiator.id !== targetID) {
                     return unauthEditOtherUser.send();
                 }
 
-                const updatedUser1 = await user.findByIdAndUpdate(target.id, {
-                    $set: {
-                        firstname: target.firstname,
-                        lastname: target.lastname,
-                        updatedBy: initiator.id
-                    }
-                }, { new: true, runValidators: true });
+                const target_account2 = await user.findById(targetID);
 
-                if (!updatedUser1) {
-                    return notFound.send();
+                if (initiator.id === targetID && body.email && body.currentPassword) {
+                    const match = await bcrypt.compare(body.currentPassword, target_account2.password);
+                    if (match) {
+                        const updateUserCompletely = await user.findByIdAndUpdate(targetID, {
+                            $set: {
+                                firstname: body.firstname,
+                                lastname: body.lastname,
+                                email: body.email,
+                                updatedBy: initiator.id
+                            }
+                        }, { new: true, runValidators: true });
+
+                        if (!updateUserCompletely) {
+                            return notFound.send();
+                        }
+
+                        const formatted3 = {
+                            id: updateUserCompletely._id,
+                            firstname: updateUserCompletely.firstname,
+                            lastname: updateUserCompletely.lastname,
+                            email: updateUserCompletely.email,
+                            registered: dayjs(updateUserCompletely.createdAt).format("YYYY-MM-DD HH:mm")
+                        }
+                        return success.send({ account: formatted3 });
+                    } else {
+                        return input.send();
+                    }
                 }
-                return success.send({ account: updatedUser1 });
+
             case "admin":
-                const target_account = await user.findById(target.id);
+                const target_account = await user.findById(targetID);
 
                 if (target_account.role === "root") {
                     return unauthEditRoot.send();
                 }
 
-                if (target_account.role === "admin" && initiator.id !== target.id) {
+                if (target_account.role === "admin" && initiator.id !== targetID) {
                     return unauthEditOtherAdmin.send();
                 }
-                const updatedUser2 = await user.findByIdAndUpdate(target.id, {
+
+                if (initiator.id === targetID && body.email && body.currentPassword) {
+
+                    const match = await bcrypt.compare(body.currentPassword, target_account.password);
+                    if (match) {
+                        const updateUserCompletely = await user.findByIdAndUpdate(targetID, {
+                            $set: {
+                                firstname: body.firstname,
+                                lastname: body.lastname,
+                                email: body.email,
+                                updatedBy: initiator.id
+                            }
+                        }, { new: true, runValidators: true });
+
+                        if (!updateUserCompletely) {
+                            return notFound.send();
+                        }
+                        const formatted3 = {
+                            id: updateUserCompletely._id,
+                            firstname: updateUserCompletely.firstname,
+                            lastname: updateUserCompletely.lastname,
+                            email: updateUserCompletely.email,
+                            registered: dayjs(updateUserCompletely.createdAt).format("YYYY-MM-DD HH:mm")
+                        }
+                        return success.send({ account: formatted3 });
+                    } else {
+                        return input.send();
+                    }
+                }
+
+                const updatedUser2 = await user.findByIdAndUpdate(targetID, {
                     $set: {
-                        firstname: target.firstname,
-                        lastname: target.lastname,
+                        firstname: body.firstname,
+                        lastname: body.lastname,
                         updatedBy: initiator.id
                     }
                 }, { new: true, runValidators: true });
@@ -214,12 +371,50 @@ async function editUser(res, initiator, target) {
                 if (!updatedUser2) {
                     return notFound.send();
                 }
-                return success.send({ account: updatedUser2 });
+
+                const formatted2 = {
+                    id: updatedUser2._id,
+                    firstname: updatedUser2.firstname,
+                    lastname: updatedUser2.lastname,
+                    email: updatedUser2.email,
+                    registered: dayjs(updatedUser2.createdAt).format("YYYY-MM-DD HH:mm")
+                }
+                return success.send({ account: formatted2 });
             case "root":
-                const updatedUser3 = await user.findByIdAndUpdate(target.id, {
+                const target_account3 = await user.findById(targetID);
+
+                if (initiator.id === targetID && body.email && body.currentPassword) {
+                    const match = await bcrypt.compare(body.currentPassword, target_account3.password);
+                    if (match) {
+                        const updateUserCompletely = await user.findByIdAndUpdate(targetID, {
+                            $set: {
+                                firstname: body.firstname,
+                                lastname: body.lastname,
+                                email: body.email,
+                                updatedBy: initiator.id
+                            }
+                        }, { new: true, runValidators: true });
+
+                        if (!updateUserCompletely) {
+                            return notFound.send();
+                        }
+
+                        const formatted3 = {
+                            id: updateUserCompletely._id,
+                            firstname: updateUserCompletely.firstname,
+                            lastname: updateUserCompletely.lastname,
+                            email: updateUserCompletely.email,
+                            registered: dayjs(updateUserCompletely.createdAt).format("YYYY-MM-DD HH:mm")
+                        }
+                        return success.send({ account: formatted3 });
+                    } else {
+                        return input.send();
+                    }
+                }
+                const updatedUser3 = await user.findByIdAndUpdate(targetID, {
                     $set: {
-                        firstname: target.firstname,
-                        lastname: target.lastname,
+                        firstname: body.firstname,
+                        lastname: body.lastname,
                         updatedBy: initiator.id
                     }
                 }, { new: true, runValidators: true });
@@ -227,17 +422,29 @@ async function editUser(res, initiator, target) {
                 if (!updatedUser3) {
                     return notFound.send();
                 }
-                return success.send({ account: updatedUser3 });
+                const formatted3 = {
+                    id: updatedUser3._id,
+                    firstname: updatedUser3.firstname,
+                    lastname: updatedUser3.lastname,
+                    email: updatedUser3.email,
+                    registered: dayjs(updatedUser3.createdAt).format("YYYY-MM-DD HH:mm")
+                }
+                return success.send({ account: formatted3 });
             default:
                 return invalidRole.send();
         }
     } catch (error) {
+        if (error.code === 11000) {
+            return conflict.send();
+        }
+
         if (error.name === "CastError") {
             return invalidID.send();
         }
         return server.send();
     }
 }
+
 
 /**
  * Raderar en användare, olika roller har olika behörigheter.
@@ -269,8 +476,12 @@ async function deleteUser(res, initiator, targetID) {
                 if (!deletedUser1) {
                     return notFound.send();
                 }
+                const deletedUser1Reviews = await getReviewsByUser(targetID);
 
-                return success.send({ account: deletedUser1 });
+                deletedUser1Reviews.forEach(async deletereview => {
+                    await review.findByIdAndDelete(deletereview._id);
+                });
+                return success.send();
             case "admin":
                 const target = await getUser(targetID);
                 if (target.role === "root") {
@@ -287,7 +498,13 @@ async function deleteUser(res, initiator, targetID) {
                     return notFound.send();
                 }
 
-                return success.send({ account: deletedUser2 });
+                const deletedUser2Reviews = await getReviewsByUser(targetID);
+
+                deletedUser2Reviews.forEach(async deletereview => {
+                    await review.findByIdAndDelete(deletereview._id);
+                });
+
+                return success.send();
             case "root":
                 const target2 = await getUser(targetID)
                 if (target2.role === "root") {
@@ -299,8 +516,13 @@ async function deleteUser(res, initiator, targetID) {
                 if (!deletedUser3) {
                     return notFound.send();
                 }
+                const deletedUser3Reviews = await getReviewsByUser(targetID);
 
-                return success.send({ account: deletedUser3 });
+                deletedUser3Reviews.forEach(async deletereview => {
+                    await review.findByIdAndDelete(deletereview._id);
+                });
+
+                return success.send();
             default:
                 return invalidRole.send();
         }
@@ -316,4 +538,4 @@ async function deleteUser(res, initiator, targetID) {
     }
 }
 
-module.exports = { getProfile, getUsers, createUser, loginUser, editUser, deleteUser };
+module.exports = { isUserLoggedIn, getProfile, getUsers, createUser, loginUser, editUser, deleteUser };

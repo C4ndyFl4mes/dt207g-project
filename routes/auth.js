@@ -12,6 +12,7 @@ router.post("/login", async (req, res) => {
     loginUser(res, req.body);
 });
 
+// För att skapa admins. Endast root kan göra det.
 router.post("/root/register", authorize(['root']), adminValidationRules(), validate, (req, res) => {
     createUser(res, req.body, req.user);
 });

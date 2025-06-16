@@ -22,33 +22,21 @@ const productSchema = new mongoose.Schema({
     description: {
         type: String,
         required: true,
-        maxlength: 300
-    },
-    onSale: {
-        type: Boolean,
-        required: true,
-        default: false
-    },
-    sale: {
-        type: String,
-        required: true,
-        minlength: 2,
-        maxlength: 3,
-        default: "0%"
+        maxlength: 2000
     },
     inCategory: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Category',
+        ref: 'category',
         required: true
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'user',
         required: true
     },
     updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'user',
         required: true
     }
 }, {

@@ -1,4 +1,5 @@
 const { body, validationResult } = require('express-validator');
+const Response = require('./response');
 
 // Massa validerings regler.
 
@@ -74,75 +75,46 @@ const adminValidationRules = () => [
 const productValidationRules = () => [
     body("name")
         .trim()
-        .escape()
         .isLength({ min: 2, max: 100 })
         .withMessage("Produktnamn måste vara mellan två och 100 tecken."),
     body("price")
         .trim()
         .escape()
-        .isNumeric()
+        .isFloat()
         .withMessage("Priset måste vara ett tal."),
     body("description")
         .trim()
-        .escape()
-        .isLength({ max: 300 })
-        .withMessage("Beskrivningen får inte överstiga 300 tecken."),
-    body("onSale")
-        .optional({ checkFalsy: true })
-        .trim()
-        .escape()
-        .isBoolean()
-        .withMessage("På rea måste vara sant eller falskt."),
-    body("sale")
-        .optional({ checkFalsy: true })
-        .trim()
-        .escape()
-        .isLength({ min: 2, max: 3 })
-        .withMessage("Rea måste vara antingen två eller tre tecken.")
+        .isLength({ max: 2000 })
+        .withMessage("Beskrivningen får inte överstiga 2000 tecken.")
 ];
 
 const categoryValidationRules = () => [
     body("name")
         .trim()
         .escape()
-        .isLength({ max: 50 })
-        .withMessage("Kategorinamn får inte överstiga 50 tecken.")
+        .isLength({ max: 50, min: 2 })
+        .withMessage("Kategorinamn måste vara mellan två och 50 tecken.")
 ];
-const editCategoryValidationRules = () => [
-    body("currentName")
-        .trim()
-        .escape()
-        .isLength({ max: 50 })
-        .withMessage("Kategorinamn får inte överstiga 50 tecken."),
-    body("newName")
-        .trim()
-        .escape()
-        .isLength({ max: 50 })
-        .withMessage("Kategorinamn får inte överstiga 50 tecken.")
-];
+
 
 const reviewValidationRules = () => [
     body("rating")
-        .trim()
-        .escape()
         .isInt({ min: 1, max: 5 })
         .withMessage("Betyg måste vara mellan ett till fem."),
     body("message")
         .trim()
-        .escape()
-        .isLength({ max: 300 })
-        .withMessage("Meddelandet får inte överskrida 300 tecken.")
+        .isLength({ max: 2000 })
+        .withMessage("Meddelandet får inte överskrida 2000 tecken.")
 ];
 
 const validate = (req, res, next) => {
+    const invalid = new Response(res, false, 400, "Misslyckades, det finns felaktiga fält.");
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({
-            success: false,
-            errors: errors.array()
-        });
+        console.log(errors);
+        return invalid.send(errors.array());
     }
     next();
 };
 
-module.exports = { userValidationRules, editUserValidationRules, adminValidationRules, productValidationRules, categoryValidationRules, editCategoryValidationRules, reviewValidationRules, validate };
+module.exports = { userValidationRules, editUserValidationRules, adminValidationRules, productValidationRules, categoryValidationRules, reviewValidationRules, validate };

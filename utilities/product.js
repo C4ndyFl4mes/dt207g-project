@@ -2,6 +2,10 @@ const product = require("../models/product");
 const { getCategoryIDbyName } = require("./category");
 const { slugify } = require("./slugify");
 const Response = require("./response");
+const { getReviewsOnProduct } = require("./review");
+const dayjs = require('dayjs');
+const review = require("../models/review");
+const category = require("../models/category");
 
 /**
  * Hämtar ett id beroende på produktnamn.
@@ -28,17 +32,49 @@ async function getProducts(res, query) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const success = new Response(res, true, 200, "Lyckades hämta produkter.");
     try {
-        const page = parseInt(query.page);
-        const limit = parseInt(query.limit);
+        const page = parseInt(query.page) || 1;
+        const limit = parseInt(query.limit) || 10;
 
         const totalItems = await product.countDocuments();
         const totalPages = Math.ceil(totalItems / limit);
         const skip = (page - 1) * limit;
 
-        const result = await product.find().skip(skip).limit(limit);
+        const result = await product.find().sort({ createdAt: -1 }).skip(skip).limit(limit).populate("inCategory", "name").lean();
+        // Nestlad loop för att räkna ut varenda produkts genomsnittsbetyg.
+        for (let i = 0; i < result.length; i++) {
+            const reviews = await getReviewsOnProduct(result[i]._id, false);
+            if (reviews && reviews.length > 0) {
+                let totalPoints = 0;
+                for (let r = 0; r < reviews.length; r++) {
+                    totalPoints += reviews[r].rating;
+                }
+                result[i].rating = totalPoints / reviews.length;
+            } else {
+                result[i].rating = 0;
+            }
+        }
+       
+        const formatted = result.map(r => ({
+            id: r._id,
+            name: {
+                normal: r.name.normal,
+                slug: r.name.slug
+            },
+            price: r.price,
+            rating: r.rating,
+            inCategory: {
+                id: r.inCategory._id,
+                name: r.inCategory.name
+            },
+            description: r.description,
+            created: dayjs(r.createdAt).format("YYYY-MM-DD HH:mm"),
+            updated: dayjs(r.updatedAt).format("YYYY-MM-DD HH:mm")
+        }));
+        
         const pagination = { totalItems, totalPages, currentPage: page, pageSize: limit };
-        return success.send({ pagination, result });
+        return success.send({ pagination, products: formatted });
     } catch (error) {
+        console.error(error);
         return server.send();
     }
 }
@@ -50,24 +86,58 @@ async function getProducts(res, query) {
  * @param {object} query - används för paginering.
  * @returns 
  */
-async function getProductsInCategory(res, inCategory, query) {
+async function getProductsInCategory(res, categoryID, query) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
     const notFound = new Response(res, false, 404, "Kategori finns inte.");
     const success = new Response(res, true, 201, "Lyckades hämta produkter från kategori.");
 
     try {
-        inCategory = await getCategoryIDbyName(inCategory);
         const page = parseInt(query.page) || 1;
         const limit = parseInt(query.limit) || 10;
 
-        const totalItems = await product.countDocuments({ "inCategory": inCategory });
+        const category = await getCategoryIDbyName(categoryID)
+
+        const totalItems = await product.countDocuments({ "inCategory": category });
         const totalPages = Math.ceil(totalItems / limit);
         const skip = (page - 1) * limit;
 
-        const result = await product.find({ "inCategory": inCategory }).skip(skip).limit(limit);
+        const result = await product.find({ "inCategory": category }).sort({ createdAt: -1 }).skip(skip).limit(limit).populate("inCategory", "name").lean();
+
+        // Nestlad loop för att räkna ut varenda produkts genomsnittsbetyg.
+        for (let i = 0; i < result.length; i++) {
+            const reviews = await getReviewsOnProduct(result[i]._id, false);
+            if (reviews && reviews.length > 0) {
+                let totalPoints = 0;
+                for (let r = 0; r < reviews.length; r++) {
+                    totalPoints += reviews[r].rating;
+                }
+                result[i].rating = totalPoints / reviews.length;
+            } else {
+                result[i].rating = 0;
+            }
+        }
+
         const pagination = { totalItems, totalPages, currentPage: page, pageSize: limit };
-        success.send({ pagination, result });
+
+        const formatted = result.map(r => ({
+            id: r._id,
+            name: {
+                normal: r.name.normal,
+                slug: r.name.slug
+            },
+            price: r.price,
+            inCategory: {
+                id: r.inCategory._id,
+                name: r.inCategory.name
+            },
+            rating: r.rating,
+            description: r.description,
+            created: dayjs(r.createdAt).format("YYYY-MM-DD HH:mm"),
+            updated: dayjs(r.updatedAt).format("YYYY-MM-DD HH:mm")
+        }));
+
+        success.send({ pagination, products: formatted });
     } catch (error) {
         if (error.status === 404) {
             return notFound.send();
@@ -76,29 +146,50 @@ async function getProductsInCategory(res, inCategory, query) {
         if (error.name === "CastError") {
             return invalidID.send();
         }
-
+        console.error(error);
         return server.send();
     }
 }
 
 /**
- * Hämtar en produkt beroende på kategori och produktnamn.
+ * Hämtar en specifik produkt efter kategori- och produktnamn.
  * @param {object} res 
- * @param {string} inCategory - vilken kategori.
- * @param {string} productN - produktnamnet.
+ * @param {string} categoryN - kategorinamn slugified.
+ * @param {string} productN - produktnamn slugified.
+ * @param {object} query - page och limit.
  * @returns 
  */
-async function getProduct(res, inCategory, productN) {
+async function getProductFromSlug(res, categoryN, productN, query) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
     const notFound = new Response(res, false, 404, "Kategori eller produkt finns inte.");
     const success = new Response(res, true, 201, "Lyckades hämta produkt.");
 
     try {
-        inCategory = await getCategoryIDbyName(inCategory);
-        productN = await getProductIDbyName(productN);
-        const result = await product.findOne({ $and: [{ "inCategory": inCategory }, { "_id": productN }] });
-        success.send({ result });
+        const categoryID = await getCategoryIDbyName(categoryN); // Hämtar kategoriID på namn.
+        const nameID = await getProductIDbyName(productN); // Hämtar produktID på namn.
+        const result = await product.findOne({ $and: [{ inCategory: categoryID }, { _id: nameID }] }).populate("inCategory", "name.normal name.slug").lean();
+        const reviews = await getReviewsOnProduct(nameID, true, query.page, query.limit);
+        let totalrating = 0;
+
+        for (let i = 0; i < reviews.reviews.length; i++) {
+            totalrating += reviews.reviews[i].rating;
+        }
+        const avgRating = totalrating / reviews.reviews.length;
+
+        const formatted = {
+            id: result._id,
+            name: result.name,
+            price: result.price,
+            inCategory: result.inCategory,
+            rating: avgRating,
+            description: result.description,
+            created: dayjs(result.createdAt).format("YYYY-MM-DD HH:mm"),
+            updated: dayjs(result.updatedAt).format("YYYY-MM-DD HH:mm")
+        };
+
+
+        success.send({ product: formatted, reviews_section: reviews });
     } catch (error) {
         if (error.status === 404) {
             return notFound.send();
@@ -107,7 +198,7 @@ async function getProduct(res, inCategory, productN) {
         if (error.name === "CastError") {
             return invalidID.send();
         }
-
+        console.error(error);
         return server.send();
     }
 }
@@ -118,7 +209,7 @@ async function getProduct(res, inCategory, productN) {
  * @param {object} param1 - ny produkt.
  * @returns 
  */
-async function createProduct(res, { name, price, description, onSale, sale, inCategory }, initiator) {
+async function createProduct(res, { name, price, description, inCategory }, initiator) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
     const notFound = new Response(res, false, 404, "Kategori finns inte.");
@@ -129,9 +220,9 @@ async function createProduct(res, { name, price, description, onSale, sale, inCa
     };
 
     try {
-        inCategory = await getCategoryIDbyName(inCategory);
-        const result = await product.create({ name: nameObject, price, description, onSale, sale, inCategory, createdBy: initiator.id, updatedBy: initiator.id });
-        return success.send({ result });
+        await product.create({ name: nameObject, price, description, inCategory, createdBy: initiator.id, updatedBy: initiator.id });
+
+        return success.send();
     } catch (error) {
         if (error.status === 404) {
             return notFound.send();
@@ -144,13 +235,13 @@ async function createProduct(res, { name, price, description, onSale, sale, inCa
 }
 
 /**
- * Ändrar en produkt.
+ * Ändrar en produkt. Enbart användaren kan ändra ens egen recension, admin och root kan bara ta bort andras.
  * @param {object} res 
  * @param {object} target - vilken produkt som ska ändras samt de nya värdena.
  * @param {object} initiator - vem som utför ändringen.
  * @returns 
  */
-async function editProduct(res, { id, name, price, description, onSale, sale, inCategory }, initiator) {
+async function editProduct(res, id, { name, price, description, inCategory }, initiator) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
     const notFound = new Response(res, false, 404, "Kategori finns inte.");
@@ -158,7 +249,6 @@ async function editProduct(res, { id, name, price, description, onSale, sale, in
     const success = new Response(res, true, 201, "Lyckades ändra produkt.");
 
     try {
-        inCategory = await getCategoryIDbyName(inCategory);
         const result = await product.findByIdAndUpdate(id, {
             $set: {
                 name: {
@@ -167,8 +257,6 @@ async function editProduct(res, { id, name, price, description, onSale, sale, in
                 },
                 price,
                 description,
-                onSale,
-                sale,
                 inCategory,
                 updatedBy: initiator.id
             }
@@ -178,7 +266,7 @@ async function editProduct(res, { id, name, price, description, onSale, sale, in
             return notFoundProduct.send();
         }
 
-        return success.send({ result });
+        return success.send();
     } catch (error) {
         if (error.status === 404) {
             return notFound.send();
@@ -196,14 +284,13 @@ async function editProduct(res, { id, name, price, description, onSale, sale, in
  * Raderar en produkt.
  * @param {object} res 
  * @param {string} targetID - vilken produkt som ska raderas.
- * @param {object} initiator - vem som utför raderingen. Kommer troligtvis användas när log fixas.
  * @returns 
  */
-async function deleteProduct(res, targetID, initiator) {
+async function deleteProduct(res, targetID) {
     const server = new Response(res, false, 500, "Ett serverfel inträffade.");
     const invalidID = new Response(res, false, 400, "Ogiltigt ID-format.");
     const notFound = new Response(res, false, 404, "Produkt finns inte.");
-    const success = new Response(res, true, 201, "Lyckades ändra produkt.");
+    const success = new Response(res, true, 201, "Lyckades radera produkt.");
 
     try {
         const result = await product.findByIdAndDelete(targetID);
@@ -212,7 +299,13 @@ async function deleteProduct(res, targetID, initiator) {
             return notFound.send();
         }
 
-        return success.send({ result });
+        const reviews = await getReviewsOnProduct(targetID);
+
+        reviews.forEach(async deletereview => {
+            await review.findByIdAndDelete(deletereview._id);
+        });
+
+        return success.send();
     } catch (error) {
         if (error.name === "CastError") {
             return invalidID.send();
@@ -222,4 +315,4 @@ async function deleteProduct(res, targetID, initiator) {
     }
 }
 
-module.exports = { getProducts, getProductsInCategory, getProduct, createProduct, editProduct, deleteProduct };
+module.exports = { getProducts, getProductsInCategory, getProductIDbyName, getProductFromSlug, createProduct, editProduct, deleteProduct };

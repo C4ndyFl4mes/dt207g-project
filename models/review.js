@@ -8,23 +8,23 @@ const reviewSchema = new mongoose.Schema({
     },
     message: {
         type: String,
-        maxlength: 300,
+        maxlength: 2000,
         required: true,
         default: ''
     },
     createdOn: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Product',
+        ref: 'product',
         required: true
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'user',
         required: true
     },
     updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'user',
         required: true
     }
 }, {
